@@ -1,17 +1,26 @@
 import math
 
-class Eq_Evaluator:
-    # test ka saman
-    functions = ['sin', 'cos', 'tan']
-    global eqify
-    eqify = False
 
+class Eq_Evaluator:
+    functions = {
+        "sin": math.sin,
+        "cos": math.cos,
+        "tan": math.tan,
+    }
+    operators = {
+        "+": (1, "left"),
+        "-": (1, "left"),
+        "*": (2, "left"),
+        "/": (2, "left"),
+        "^": (3, "right"),
+    }
+    unary_operators = {
+        "neg": (2.5, "right"),
+    }
 
     def tokenizer(self, eq):
         tokens = []
         i = 0
-        self.eqify = False
-        self.n_variable = None
 
         while i < len(eq):
             c = eq[i]
@@ -19,205 +28,243 @@ class Eq_Evaluator:
             if c.isspace():
                 i += 1
                 continue
-            #negative?
-            if c == "-" and (len(tokens) == 0 or tokens[-1] in ["+", "-", "*", "^", "/", "(", ")", "="]):
-                if i+1 < len(eq) or (eq[i+1].isdigit() or eq[i+1] == "."):
-                    start = i
-                    i += 1
-                    while i<len(eq) and (eq[i+1].isdigit() or eq[i+1] == "."):
-                        i += 1
-                    if i < len(eq) and eq[i] in "Ee":
-                        i += 1
-                        if i < len(eq) and eq[i] in "+-":
-                            i += 1
-                        while i < len(eq) and eq[i].isdigit():
-                            i += 1
-                    tokens.append(eq[start:i])
-                    continue
-            #normal numbers
-            if c.isdigit() or c == ".": #incase u use stuff like .5 .10
-                start = i
-                while i < len(eq) and (eq[i].isdigit() or eq[i] == "."):
-                    i += 1
-                if i < len(eq) and eq[i] in "Ee":
-                    i += 1
-                    if i < len(eq) and eq[i] in "+-":
-                        i += 1
-                    while i < len(eq) and eq[i].isdigit():
-                        i += 1
-                tokens.append(eq[start:i])
+
+            if c.isdigit() or c == ".":
+                number, i = self._read_number(eq, i)
+                tokens.append(number)
                 continue
-            #variables, functions etc
-            if c.isalpha():
+
+            if c.isalpha() or c == "_":
                 start = i
-                while i < len(eq) and eq[i].isalpha():
+                i += 1
+                while i < len(eq) and (eq[i].isalnum() or eq[i] == "_"):
                     i += 1
                 tokens.append(eq[start:i])
                 continue
-            #operators
+
             if c in "+-*/^(),=":
                 tokens.append(c)
                 i += 1
                 continue
-            #raise ValueError("Unknown Character" + c)
-        if "=" in tokens:
-            tokens = self.equalsign(tokens)
-            self.eqify = True
-        else:
-            self.eqify = False
+
+            raise ValueError(f"Unknown character: {c}")
+
         return tokens
 
+    def _read_number(self, eq, start):
+        i = start
+        saw_digit = False
+
+        while i < len(eq) and (eq[i].isdigit() or eq[i] == "."):
+            saw_digit = saw_digit or eq[i].isdigit()
+            i += 1
+
+        if i < len(eq) and eq[i] in "Ee":
+            exp_start = i
+            i += 1
+            if i < len(eq) and eq[i] in "+-":
+                i += 1
+            exp_digits_start = i
+            while i < len(eq) and eq[i].isdigit():
+                i += 1
+            if exp_digits_start == i:
+                raise ValueError(f"Invalid number: {eq[start:i]}")
+            saw_digit = saw_digit or exp_start > start
+
+        number = eq[start:i]
+        if not saw_digit:
+            raise ValueError(f"Invalid number: {number}")
+
+        float(number)
+        return number, i
+
     def equalsign(self, tokens):
-        self.eqify = True
-        self.n_variable = None
+        if tokens.count("=") != 1:
+            raise ValueError("Expressions can contain only one assignment")
+
         index = tokens.index("=")
-        global n_variable
-        n_variable = tokens[:index]
-        equation = tokens[index+1:]
-        return equation
+        variable = tokens[:index]
+        equation = tokens[index + 1:]
 
-    def isdigitcursed(self, current, variables, functions):
-        if current in variables:
-            return True
-        else:
-            try:
-                float(current)
-                return True
-            except:
-                return False
+        if len(variable) != 1 or not self._is_identifier(variable[0]):
+            raise ValueError("Assignment target must be a single variable name")
+        if not equation:
+            raise ValueError("Assignment is missing a right-hand expression")
 
+        return variable[0], equation
+
+    def isdigitcursed(self, current, variables, functions=None):
+        return self._is_number(current) or current in variables
 
     def isfunction(self, current):
-        bracket_count = 0
-        for b in current:
-            if b == "(":
-                bracket_count += 1
-            elif b == ")":
-                bracket_count += 1
-            else:
-                pass
-        if bracket_count == 2:
-            return True
-        else:
-            return False
-
+        return current in self.functions
 
     def substitution(self, thing, variables):
-        bracket_count = 0
-        for b in thing:
-            if b in "()":
-                bracket_count += 1
-            elif b in variables and bracket_count > 0:  # bug what if there is an x in the func itself T-T
-                thing = thing.replace(b, str(variables[b]))
-        return thing
-
+        tokens = self.tokenizer(thing)
+        substituted = [
+            str(variables[token]) if token in variables else token
+            for token in tokens
+        ]
+        return "".join(substituted)
 
     def runfunction(self, bruh, variables):
-        sub_ver = self.substitution(bruh, variables)
-        if sub_ver.startswith('sin('):
-            return math.sin(float(sub_ver[4:-1]))
-        elif sub_ver.startswith('cos('):
-            return math.cos(float(sub_ver[4:-1]))
-        elif sub_ver.startswith('tan('):
-            return math.tan(float(sub_ver[4:-1]))
+        return self.evaluate((bruh, variables))
 
-
-    def convert_rpn(self, equation, output, variables, functions):
-        operations_stack = []
-        precedence = {
-            "+": 1,
-            "-": 1,
-            "*": 2,
-            "/": 2,
-            "^": 3
+    def convert_rpn(self, equation, output=None, variables=None, functions=None):
+        output = [] if output is None else output
+        variables = {} if variables is None else variables
+        functions = self.functions if functions is None else {
+            name: self.functions[name] for name in functions
         }
+        operations_stack = []
+        previous_token = None
 
         for current in equation:
-            if self.isdigitcursed(current, variables, functions):
+            if self._is_number(current) or (
+                self._is_identifier(current) and current not in functions
+            ):
+                if self._is_identifier(current) and current not in variables:
+                    raise NameError(f"Unknown variable: {current}")
                 output.append(current)
             elif current in functions:
                 operations_stack.append(current)
+            elif current == ",":
+                while operations_stack and operations_stack[-1] != "(":
+                    output.append(operations_stack.pop())
+                if not operations_stack:
+                    raise ValueError("Misplaced comma or mismatched parentheses")
             elif current == "(":
                 operations_stack.append(current)
             elif current == ")":
                 while operations_stack and operations_stack[-1] != "(":
                     output.append(operations_stack.pop())
+                if not operations_stack:
+                    raise ValueError("Mismatched parentheses")
                 operations_stack.pop()
 
-                if operations_stack and operations_stack[-1] in self.functions:
+                if operations_stack and operations_stack[-1] in functions:
                     output.append(operations_stack.pop())
-            else:
-                if len(operations_stack) > 0:
-                    while operations_stack and operations_stack[-1] != "(" and operations_stack[-1] not in functions and (
-                            precedence[operations_stack[-1]] > precedence[current] or (
-                            precedence[operations_stack[-1]] == precedence[current] and current != "^")):
-                        a = operations_stack.pop()
-                        output.append(a)
+            elif current in self.operators:
+                if current in "+-" and self._is_unary(previous_token):
+                    if current == "-":
+                        operations_stack.append("neg")
+                    previous_token = current
+                    continue
+
+                while (
+                    operations_stack
+                    and self._is_operator(operations_stack[-1])
+                    and self._should_pop_operator(operations_stack[-1], current)
+                ):
+                    output.append(operations_stack.pop())
                 operations_stack.append(current)
-
-        while len(operations_stack) > 0:
-            output.append(operations_stack.pop())
-        return output
-
-
-    def evaluate_rpn(self, rpn, output, variables, functions):
-        precedence = {
-            "+": 1,
-            "-": 1,
-            "*": 2,
-            "/": 2,
-            "^": 3
-        }
-        for current in rpn:
-            current = str(current)
-            if current.isdigit() or self.isdigitcursed(current, variables, functions):
-                if "." in current:
-                    output.append(float(current))
-                elif current in "Ee":
-                    current = current.split("E")
-                    bleh = 10 ** float(current[1])
-                    current = float(current[0]) * bleh
-                    output.append(current)
-                elif current in variables:
-                    current = variables[current]
-                    output.append(current)
-                else:
-                    output.append(int(current))
-            elif current in functions:
-                value = output.pop()
-
-                if current == "sin":
-                    output.append(math.sin(value))
-                elif current == "cos":
-                    output.append(math.cos(value))
-                elif current == "tan":
-                    output.append(math.tan(value))
             else:
-                second_no = float(output.pop())
-                first_no = float(output.pop())
-                if current == "+":
-                    result = first_no + second_no
-                if current == "-":
-                    result = first_no - second_no
-                if current == "*":
-                    result = first_no * second_no
-                if current == "/":
-                    result = first_no / second_no
-                if current == "^":
-                    result = first_no ** second_no
-                output.append(result)
-                if eqify == True:
-                    variables[n_variable] = result
+                raise ValueError(f"Unknown token: {current}")
+
+            previous_token = current
+
+        while operations_stack:
+            operator = operations_stack.pop()
+            if operator == "(":
+                raise ValueError("Mismatched parentheses")
+            output.append(operator)
+
         return output
 
+    def evaluate_rpn(self, rpn, output=None, variables=None, functions=None):
+        output = [] if output is None else output
+        variables = {} if variables is None else variables
+        functions = self.functions if functions is None else {
+            name: self.functions[name] for name in functions
+        }
+
+        for current in rpn:
+            if self._is_number(current):
+                output.append(float(current))
+            elif current in variables:
+                output.append(float(variables[current]))
+            elif current in functions:
+                if not output:
+                    raise ValueError(f"Function {current} is missing an argument")
+                output.append(functions[current](output.pop()))
+            elif current in self.unary_operators:
+                if not output:
+                    raise ValueError(f"Operator {current} is missing an operand")
+                output.append(-output.pop())
+            elif current in self.operators:
+                if len(output) < 2:
+                    raise ValueError(f"Operator {current} is missing operands")
+                second_no = output.pop()
+                first_no = output.pop()
+                output.append(self._apply_operator(current, first_no, second_no))
+            else:
+                raise NameError(f"Unknown variable: {current}")
+
+        if len(output) != 1:
+            raise ValueError("Expression did not reduce to a single value")
+
+        return output
+
+    def evaluate(self, test):
+        equation, variables = test
+        variable_name = None
+        tokens = self.tokenizer(equation)
+
+        if "=" in tokens:
+            variable_name, tokens = self.equalsign(tokens)
+
+        rpn_equation = self.convert_rpn(tokens, variables=variables)
+        solved_answer = self.evaluate_rpn(rpn_equation, variables=variables)[0]
+
+        if variable_name is not None:
+            variables[variable_name] = solved_answer
+
+        return solved_answer
 
     def evalute(self, test):
-        functions = ['sin', 'cos', 'tan']
-        variables = test[1]
-        output = []
-        outputil = []
-        og_equation = self.tokenizer(test[0])
-        rpn_equation = self.convert_rpn(og_equation, output, variables, functions)
-        solved_answer = self.evaluate_rpn(rpn_equation, outputil, variables, functions)
-        return solved_answer[0]
+        return self.evaluate(test)
 
+    def _apply_operator(self, operator, first_no, second_no):
+        if operator == "+":
+            return first_no + second_no
+        if operator == "-":
+            return first_no - second_no
+        if operator == "*":
+            return first_no * second_no
+        if operator == "/":
+            return first_no / second_no
+        if operator == "^":
+            return first_no ** second_no
+        raise ValueError(f"Unknown operator: {operator}")
+
+    def _is_number(self, value):
+        try:
+            float(value)
+        except (TypeError, ValueError):
+            return False
+        return True
+
+    def _is_identifier(self, value):
+        return isinstance(value, str) and value.isidentifier()
+
+    def _is_unary(self, previous_token):
+        return (
+            previous_token is None
+            or previous_token in self.operators
+            or previous_token in {"(", "=", ","}
+        )
+
+    def _should_pop_operator(self, stack_operator, current_operator):
+        stack_precedence, _ = self._operator_info(stack_operator)
+        current_precedence, associativity = self._operator_info(current_operator)
+        return stack_precedence > current_precedence or (
+            stack_precedence == current_precedence and associativity == "left"
+        )
+
+    def _is_operator(self, token):
+        return token in self.operators or token in self.unary_operators
+
+    def _operator_info(self, token):
+        if token in self.operators:
+            return self.operators[token]
+        return self.unary_operators[token]
