@@ -1,33 +1,39 @@
-from operator import truediv
+import math
+
 from Eq_Evaluator import Eq_Evaluator
 
-class Code_Parser:
-    code_str = ""
-    variables = {}
 
+class Code_Parser:
     def __init__(self, file_name):
         self.cal = Eq_Evaluator()
         self.file_name = file_name
-        self.variables["pi"] = 3.14
+        self.variables = {"pi": math.pi}
         with open(self.file_name, "r", encoding="utf-8") as f:
             self.code_str = f.read()
 
-
     def parse(self):
-        code_lines = self.code_str.split(";")
-        trimmed_lines = [line.strip() for line in code_lines]
-        print(trimmed_lines)
-        for line in trimmed_lines:
-            split_line2 = line.split("=")
-            split_line = [sline.strip() for sline in split_line2]
-            if(len(split_line) == 2):
-                value = self.cal.evalute((split_line[1],self.variables))
-                result = self.add_if_not_exists(split_line[0], value)
-            #print(split_line)
+        for statement in self._statements():
+            name, expression = self._split_assignment(statement)
+            self.variables[name] = self.cal.evaluate((expression, self.variables))
+        return self.variables
 
+    def _statements(self):
+        return [
+            statement.strip()
+            for statement in self.code_str.split(";")
+            if statement.strip()
+        ]
 
-    def add_if_not_exists(self,name, value):
-        if not any(n == name for n in self.variables):
+    def _split_assignment(self, statement):
+        parts = [part.strip() for part in statement.split("=", 1)]
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            raise ValueError(f"Invalid assignment statement: {statement}")
+        if not parts[0].isidentifier():
+            raise ValueError(f"Invalid variable name: {parts[0]}")
+        return parts[0], parts[1]
+
+    def add_if_not_exists(self, name, value):
+        if name not in self.variables:
             self.variables[name] = value
             return True
         return False
@@ -36,5 +42,8 @@ class Code_Parser:
     def print_variables(self):
         print(self.variables)
 
-    def get_vaLue(self,var_name):
+    def get_value(self, var_name):
         return self.variables[var_name]
+
+    def get_vaLue(self, var_name):
+        return self.get_value(var_name)
