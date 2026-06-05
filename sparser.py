@@ -18,9 +18,10 @@ class Code_Parser:
         return self.variables
 
     def _statements(self):
+        normalized_source = self.code_str.replace(";", "\n")
         return [
             statement.strip()
-            for statement in self.code_str.split(";")
+            for statement in normalized_source.splitlines()
             if statement.strip()
         ]
 

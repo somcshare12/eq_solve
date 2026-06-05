@@ -15,7 +15,7 @@ class CodeParserTest(unittest.TestCase):
         return Code_Parser(path)
 
     def test_parse_assignments_in_order(self):
-        parser = self.make_parser("x=1; y = x + 2; f = y^2 + sin(pi);")
+        parser = self.make_parser("x=1\ny = x + 2; f = y^2 + sin(pi);")
 
         variables = parser.parse()
 
